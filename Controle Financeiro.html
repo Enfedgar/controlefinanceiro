@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Controle de Receitas e Despesas</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f4f4;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 600px;
+      margin: auto;
+      background: #fff;
+      padding: 20px;
+      border-radius: 5px;
+    }
+    h2 {
+      text-align: center;
+    }
+    .balance {
+      text-align: center;
+      margin: 20px 0;
+    }
+    .inc-exp-container {
+      display: flex;
+      justify-content: space-between;
+      margin: 20px 0;
+    }
+    .inc-exp-container div {
+      flex: 1;
+      padding: 10px;
+      border-radius: 5px;
+      background: #f1f1f1;
+      margin: 0 5px;
+      text-align: center;
+    }
+    form {
+      display: flex;
+      flex-direction: column;
+    }
+    form input, form select, form button {
+      margin: 5px 0;
+      padding: 10px;
+      font-size: 16px;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 20px 0 0 0;
+    }
+    ul li {
+      background: #f9f9f9;
+      padding: 10px;
+      border-left: 5px solid;
+      margin: 5px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    ul li.plus {
+      border-color: #2ecc71;
+    }
+    ul li.minus {
+      border-color: #c0392b;
+    }
+    .delete-btn {
+      background: none;
+      border: none;
+      color: #c0392b;
+      cursor: pointer;
+      font-size: 20px;
+    }
+    #export-btn {
+      margin-top: 10px;
+      padding: 10px;
+      font-size: 16px;
+      background-color: #3498db;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Controle Financeiro</h2>
+    <div class="balance">
+      <h3>Saldo: R$ <span id="balance">0.00</span></h3>
+    </div>
+    <div class="inc-exp-container">
+      <div>
+        <h4>Receitas</h4>
+        <p id="money-plus" style="color: #2ecc71;">R$ 0.00</p>
+      </div>
+      <div>
+        <h4>Despesas</h4>
+        <p id="money-minus" style="color: #c0392b;">R$ 0.00</p>
+      </div>
+    </div>
+    <form id="form">
+      <input type="text" id="text" placeholder="Descrição" required />
+      <input type="number" id="amount" placeholder="Valor" required />
+      <select id="category" required>
+        <option value="" disabled selected>Selecione a Categoria</option>
+        <option value="Receita">Receita</option>
+        <option value="Despesa">Despesa</option>
+      </select>
+      <button type="submit">Adicionar Transação</button>
+    </form>
+    <button id="export-btn">Exportar Transações do Dia (PDF)</button>
+    <ul id="list"></ul>
+  </div>
+
+  <!-- Inclusão da biblioteca html2pdf.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+  <script>
+    const balance = document.getElementById('balance');
+    const money_plus = document.getElementById('money-plus');
+    const money_minus = document.getElementById('money-minus');
+    const list = document.getElementById('list');
+    const form = document.getElementById('form');
+    const text = document.getElementById('text');
+    const amount = document.getElementById('amount');
+    const category = document.getElementById('category');
+    const exportBtn = document.getElementById('export-btn');
+
+    let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
+
+    function addTransaction(e) {
+      e.preventDefault();
+
+      if (text.value.trim() === '' || amount.value.trim() === '' || category.value === '') {
+        alert('Por favor, preencha todos os campos.');
+        return;
+      }
+
+      const value = parseFloat(amount.value);
+      const transaction = {
+        id: generateID(),
+        text: text.value,
+        amount: category.value === 'Receita' ? Math.abs(value) : -Math.abs(value),
+        category: category.value,
+        date: new Date().toLocaleDateString('pt-BR')
+      };
+
+      transactions.push(transaction);
+      addTransactionDOM(transaction);
+      updateValues();
+      updateLocalStorage();
+
+      text.value = '';
+      amount.value = '';
+      category.value = '';
+    }
+
+    function generateID() {
+      return Math.floor(Math.random() * 100000000);
+    }
+
+    function addTransactionDOM(transaction) {
+      const sign = transaction.amount < 0 ? '-' : '+';
+
+      const item = document.createElement('li');
+      item.classList.add(transaction.amount < 0 ? 'minus' : 'plus');
+
+      item.innerHTML = `
+        ${transaction.text} (${transaction.category}) <span>${sign}R$${Math.abs(transaction.amount).toFixed(2)}</span>
+        <button class="delete-btn" onclick="removeTransaction(${transaction.id})">x</button>
+      `;
+
+      list.appendChild(item);
+    }
+
+    function updateValues() {
+      const amounts = transactions.map(transaction => transaction.amount);
+
+      const total = amounts.reduce((acc, item) => (acc += item), 0).toFixed(2);
+      const income = amounts
+        .filter(item => item > 0)
+        .reduce((acc, item) => (acc += item), 0)
+        .toFixed(2);
+      const expense = (
+        amounts.filter(item => item < 0).reduce((acc, item) => (acc += item), 0) * -1
+      ).toFixed(2);
+
+      balance.innerText = `${total}`;
+      money_plus.innerText = `R$ ${income}`;
+      money_minus.innerText = `R$ ${expense}`;
+    }
+
+    function removeTransaction(id) {
+      transactions = transactions.filter(transaction => transaction.id !== id);
+      updateLocalStorage();
+      init();
+    }
+
+    function updateLocalStorage() {
+      localStorage.setItem('transactions', JSON.stringify(transactions));
+    }
+
+    function init() {
+      list.innerHTML = '';
+      transactions.forEach(addTransactionDOM);
+      updateValues();
+    }
+
+    function exportTransactions() {
+  const today = new Date().toLocaleDateString('pt-BR');
+  const todayTransactions = transactions.filter(t => t.date === today);
+
+  if (todayTransactions.length === 0) {
+    alert('Nenhuma transação registrada para hoje.');
+    return;
+  }
+
+  // Calcular totais
+  const amounts = todayTransactions.map(t => t.amount);
+  const income = amounts.filter(a => a > 0).reduce((acc, val) => acc + val, 0).toFixed(2);
+  const expense = amounts.filter(a => a < 0).reduce((acc, val) => acc + val, 0).toFixed(2);
+  const balance = (amounts.reduce((acc, val) => acc + val, 0)).toFixed(2);
+
+  // Criar conteúdo HTML para o PDF
+  let content = `
+    <h2>Transações do Dia - ${today}</h2>
+    <table border="1" cellspacing="0" cellpadding="5">
+      <tr>
+        <th>Descrição</th>
+        <th>Categoria</th>
+        <th>Valor</th>
+        <th>Data</th>
+      </tr>
+  `;
+
+  todayTransactions.forEach(t => {
+    content += `
+      <tr>
+        <td>${t.text}</td>
+        <td>${t.category}</td>
+        <td>R$ ${t.amount.toFixed(2)}</td>
+        <td>${t.date}</td>
+      </tr>
+    `;
+  });
+
+  content += `
+    </table>
+    <br>
+    <h3>Resumo Financeiro do Dia</h3>
+    <p><strong>Receitas:</strong> R$ ${income}</p>
+    <p><strong>Despesas:</strong> R$ ${Math.abs(expense).toFixed(2)}</p>
+    <p><strong>Saldo:</strong> R$ ${balance}</p>
+  `;
+
+  const opt = {
+    margin: 1,
+    filename: `transacoes_${today.replace(/\//g, '-')}.pdf`,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2 },
+    jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+  };
+
+  const element = document.createElement('div');
+  element.innerHTML = content;
+  html2pdf().set(opt).from(element).save();
+}
+
+
+    exportBtn.addEventListener('click', exportTransactions);
+    form.addEventListener('submit', addTransaction);
+
+    init();
+  </script>
+</body>
+</html>
